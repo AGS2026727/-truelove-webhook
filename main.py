@@ -10,7 +10,6 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-# Identifica plano pelo valor em centavos
 def identificar_plano(valor_centavos):
     if valor_centavos == 499:
         return {"nome": "express", "horas": 24}
@@ -72,23 +71,30 @@ def verificar():
         "Authorization": f"Bearer {SUPABASE_KEY}",
     }
     url = f"{SUPABASE_URL}/rest/v1/Usuarios?Email=eq.{email}&select=Plano,expira_em,mensagem_grati"
-    response = requests.get(url, headers=headers)
-    dados = response.json()
+    
+    try:
+        response = requests.get(url, headers=headers)
+        dados = response.json()
+    except Exception as e:
+        return jsonify({"ativo": False, "motivo": "erro banco"}), 500
 
-    if not dados:
-        return jsonify({"ativo": False, "motivo": "nao encontrado"})
+    if not dados or not isinstance(dados, list) or len(dados) == 0:
+        return jsonify({"ativo": True, "plano": "gratis", "mensagens": 0})
 
     usuario = dados[0]
     expira_em = usuario.get("expira_em")
 
     if expira_em:
-        expira = datetime.fromisoformat(expira_em.replace("Z", "+00:00")).replace(tzinfo=None)
-        if datetime.utcnow() < expira:
-            return jsonify({"ativo": True, "plano": usuario["Plano"]})
-        else:
-            return jsonify({"ativo": False, "motivo": "expirado"})
+        try:
+            expira = datetime.fromisoformat(expira_em.replace("Z", "").replace("+00:00", ""))
+            if datetime.utcnow() < expira:
+                return jsonify({"ativo": True, "plano": usuario.get("Plano", "pago")})
+            else:
+                return jsonify({"ativo": False, "motivo": "expirado"})
+        except Exception:
+            return jsonify({"ativo": False, "motivo": "erro data"})
 
-    msgs = usuario.get("mensagem_grati", 0)
+    msgs = usuario.get("mensagem_grati", 0) or 0
     if msgs < 3:
         return jsonify({"ativo": True, "plano": "gratis", "mensagens": msgs})
 
@@ -96,7 +102,11 @@ def verificar():
 
 @app.route("/incrementar", methods=["POST"])
 def incrementar():
-    email = request.json.get("email")
+    try:
+        email = request.json.get("email")
+    except Exception:
+        return jsonify({"error": "json invalido"}), 400
+
     if not email:
         return jsonify({"error": "email ausente"}), 400
 
@@ -110,10 +120,14 @@ def incrementar():
     response = requests.get(url, headers=headers)
     dados = response.json()
 
-    if not dados:
-        requests.post(f"{SUPABASE_URL}/rest/v1/Usuarios", json={"Email": email, "mensagem_grati": 1}, headers=headers)
+    if not dados or not isinstance(dados, list) or len(dados) == 0:
+        requests.post(
+            f"{SUPABASE_URL}/rest/v1/Usuarios",
+            json={"Email": email, "mensagem_grati": 1},
+            headers=headers
+        )
     else:
-        atual = dados[0].get("mensagem_grati", 0)
+        atual = dados[0].get("mensagem_grati", 0) or 0
         requests.patch(
             f"{SUPABASE_URL}/rest/v1/Usuarios?Email=eq.{email}",
             json={"mensagem_grati": atual + 1},
