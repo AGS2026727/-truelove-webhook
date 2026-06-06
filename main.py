@@ -10,11 +10,18 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-PLANOS = {
-    "price_express": {"nome": "express", "horas": 24},
-    "price_7day": {"nome": "7dias", "horas": 168},
-    "price_premium": {"nome": "premium", "horas": 720},
-}
+# Identifica plano pelo valor em centavos
+def identificar_plano(valor_centavos):
+    if valor_centavos == 499:
+        return {"nome": "express", "horas": 24}
+    elif valor_centavos == 799:
+        return {"nome": "24h", "horas": 24}
+    elif valor_centavos == 999:
+        return {"nome": "7dias", "horas": 168}
+    elif valor_centavos == 1499:
+        return {"nome": "premium", "horas": 720}
+    else:
+        return {"nome": "express", "horas": 24}
 
 def gravar_usuario(email, plano, expira_em):
     headers = {
@@ -46,13 +53,9 @@ def webhook():
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         email = session.get("customer_details", {}).get("email")
-        price_id = session.get("line_items", {})
+        valor = session.get("amount_total", 0)
 
-        # Pega o price_id dos metadados ou line items
-        metadata = session.get("metadata", {})
-        plano_key = metadata.get("plano", "express")
-        plano = PLANOS.get(plano_key, {"nome": "express", "horas": 24})
-
+        plano = identificar_plano(valor)
         expira_em = datetime.utcnow() + timedelta(hours=plano["horas"])
         gravar_usuario(email, plano["nome"], expira_em)
 
@@ -103,13 +106,11 @@ def incrementar():
         "Content-Type": "application/json",
     }
 
-    # Busca atual
     url = f"{SUPABASE_URL}/rest/v1/Usuarios?Email=eq.{email}&select=mensagem_grati"
     response = requests.get(url, headers=headers)
     dados = response.json()
 
     if not dados:
-        # Cria usuário novo
         requests.post(f"{SUPABASE_URL}/rest/v1/Usuarios", json={"Email": email, "mensagem_grati": 1}, headers=headers)
     else:
         atual = dados[0].get("mensagem_grati", 0)
