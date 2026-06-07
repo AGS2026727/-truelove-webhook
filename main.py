@@ -128,10 +128,16 @@ def incrementar():
     dados = response.json()
 
     if not dados or not isinstance(dados, list) or len(dados) == 0:
+        headers_insert = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+        }
         requests.post(
             f"{SUPABASE_URL}/rest/v1/Usuarios",
             json={"Email": email, "mensagem_grati": 1},
-            headers=headers
+            headers=headers_insert
         )
     else:
         atual = dados[0].get("mensagem_grati", 0) or 0
