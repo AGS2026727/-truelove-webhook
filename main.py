@@ -10,17 +10,14 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-def identificar_plano(valor_centavos):
-    if valor_centavos == 499:
-        return {"nome": "express", "horas": 24}
-    elif valor_centavos == 799:
-        return {"nome": "24h", "horas": 24}
-    elif valor_centavos == 999:
-        return {"nome": "7dias", "horas": 168}
-    elif valor_centavos == 1499:
-        return {"nome": "premium", "horas": 720}
-    else:
-        return {"nome": "express", "horas": 24}
+PLANOS = {
+    "price_1TdHYoGc5T0Z5rAD7BaHQSZp": {"nome": "express",  "horas": 24},
+    "price_1TdHYqGc5T0Z5rADJlbNkBvn": {"nome": "24h",      "horas": 24},
+    "price_1TdHYpGc5T0Z5rAD4DQRthZI": {"nome": "7dias",    "horas": 168},
+    "price_1TfPpqGc5T0Z5rADN7YDskWW": {"nome": "premium",  "horas": 720},
+}
+
+TOLERANCIA_MINUTOS = 10
 
 def gravar_usuario(email, plano, expira_em):
     headers = {
@@ -52,10 +49,20 @@ def webhook():
     if event["type"] == "checkout.session.completed":
         session = event["data"]["object"]
         email = session.get("customer_details", {}).get("email")
-        valor = session.get("amount_total", 0)
 
-        plano = identificar_plano(valor)
-        expira_em = datetime.utcnow() + timedelta(hours=plano["horas"])
+        # Busca o price_id dentro dos line_items expandidos
+        # O Stripe envia o price.id dentro de line_items quando expand está configurado
+        # Alternativa segura: buscar via API
+        session_id = session.get("id")
+
+        try:
+            line_items = stripe.checkout.Session.list_line_items(session_id, limit=1)
+            price_id = line_items["data"][0]["price"]["id"]
+        except Exception:
+            price_id = None
+
+        plano = PLANOS.get(price_id, {"nome": "express", "horas": 24})
+        expira_em = datetime.utcnow() + timedelta(hours=plano["horas"]) + timedelta(minutes=TOLERANCIA_MINUTOS)
         gravar_usuario(email, plano["nome"], expira_em)
 
     return jsonify({"status": "ok"}), 200
@@ -71,7 +78,7 @@ def verificar():
         "Authorization": f"Bearer {SUPABASE_KEY}",
     }
     url = f"{SUPABASE_URL}/rest/v1/Usuarios?Email=eq.{email}&select=Plano,expira_em,mensagem_grati"
-    
+
     try:
         response = requests.get(url, headers=headers)
         dados = response.json()
@@ -128,11 +135,14 @@ def incrementar():
         )
     else:
         atual = dados[0].get("mensagem_grati", 0) or 0
+        novo = atual + 1
         requests.patch(
             f"{SUPABASE_URL}/rest/v1/Usuarios?Email=eq.{email}",
-            json={"mensagem_grati": atual + 1},
+            json={"mensagem_grati": novo},
             headers=headers
         )
+        if novo >= 3:
+            return jsonify({"status": "limite_atingido"})
 
     return jsonify({"status": "ok"})
 
