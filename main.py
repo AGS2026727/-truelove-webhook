@@ -30,7 +30,7 @@ def gravar_usuario(email, plano, expira_em):
         "Email": email,
         "Plano": plano,
         "expira_em": expira_em.isoformat(),
-        "mensagem_grati": 0
+        "mensagem_gratis": 0
     }
     url = f"{SUPABASE_URL}/rest/v1/Usuarios"
     response = requests.post(url, json=data, headers=headers)
@@ -77,7 +77,7 @@ def verificar():
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
     }
-    url = f"{SUPABASE_URL}/rest/v1/Usuarios?Email=eq.{email}&select=Plano,expira_em,mensagem_grati"
+    url = f"{SUPABASE_URL}/rest/v1/Usuarios?Email=eq.{email}&select=Plano,expira_em,mensagem_gratis"
 
     try:
         response = requests.get(url, headers=headers)
@@ -101,7 +101,7 @@ def verificar():
         except Exception:
             return jsonify({"ativo": False, "motivo": "erro data"})
 
-    msgs = usuario.get("mensagem_grati", 0) or 0
+    msgs = usuario.get("mensagem_gratis", 0) or 0
     if msgs < 3:
         return jsonify({"ativo": True, "plano": "gratis", "mensagens": msgs})
 
@@ -123,7 +123,7 @@ def incrementar():
         "Content-Type": "application/json",
     }
 
-    url = f"{SUPABASE_URL}/rest/v1/Usuarios?Email=eq.{email}&select=mensagem_grati"
+    url = f"{SUPABASE_URL}/rest/v1/Usuarios?Email=eq.{email}&select=mensagem_gratis"
     response = requests.get(url, headers=headers)
     dados = response.json()
 
@@ -136,15 +136,15 @@ def incrementar():
         }
         requests.post(
             f"{SUPABASE_URL}/rest/v1/Usuarios",
-            json={"Email": email, "mensagem_grati": 1},
+            json={"Email": email, "mensagem_gratis": 1},
             headers=headers_insert
         )
     else:
-        atual = dados[0].get("mensagem_grati", 0) or 0
+        atual = dados[0].get("mensagem_gratis", 0) or 0
         novo = atual + 1
         requests.patch(
             f"{SUPABASE_URL}/rest/v1/Usuarios?Email=eq.{email}",
-            json={"mensagem_grati": novo},
+            json={"mensagem_gratis": novo},
             headers=headers
         )
         if novo >= 3:
